@@ -30,6 +30,8 @@
             width: 100vw;
             height: 100vh;
             font-family: 'Myriad Set Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+
+
         }
 
         canvas {
@@ -55,6 +57,17 @@
             height: 100%;
             z-index: 2;
             touch-action: none;
+        }
+
+        #menu {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 4;
+            overflow: hidden scroll;
+            background: rgba(0, 127, 255, 0.5);
         }
 
 
@@ -94,7 +107,7 @@
             <input id="rom" type="file">
         </div>
         <a target="_blank" href="https://github.com/44670/desmume-wasm">https://github.com/44670/desmume-wasm</a>
-        <p>Ver. 20210918</p>
+        <p>Ver. 20210921</p>
         <div id="ios-hint" hidden>
             Due to iOS Safari limitations, you may need to add this page to your home screen before you can save the
             game.
@@ -114,16 +127,19 @@
         <div class="vk-rect vk" data-k="start">+</div>
         <div class="vk-round vk" data-k="stick" id="vk-stick"></div>
     </div>
-    <div style="z-index: 2;position: absolute;top: 0px;" id="fps" hidden></div>
+    <div style="z-index: 2;position: absolute;bottom: 20px;" id="fps"></div>
     <div id="msg-layer" hidden>
         <p id="msg-text"></p>
     </div>
+    <div id="menu" hidden></div>
     <canvas id="top" width="256" height="192"></canvas><br>
     <canvas id="bottom" width="256" height="192"></canvas><br>
     <script src="localforage.js"></script>
     <script src="build/nds.js"></script>
     <script>
 
+        var uiCurrentMode = 'welcome'
+        var uiVkEnabled = true
         var plugins = {}
         var body = document.getElementsByTagName("body")[0]
         var html = document.getElementsByTagName("html")[0]
@@ -171,6 +187,8 @@
         const emuKeyboradMapping = [39, 37, 40, 38, 16, 13, 90, 88, 65, 83, 81, 87, -1, 8]
         var emuGameID = 'unknown'
         var emuIsRunning = false
+        var emuGPUHalfMode = false
+        var emuIsGameLoaded = false
         var fps = 0
         var divFPS = $id('fps')
         var fileInput = $id('rom')
@@ -190,7 +208,6 @@
 
         var frameCount = 0
         var prevCalcFPSTime = 0
-        var shouldDraw = false
         var touched = 0
         var touchX = 0
         var touchY = 0
@@ -215,14 +232,21 @@
         }
 
         function emuRunFrame() {
+            processGamepadInput()
             var keyMask = 0;
             for (var i = 0; i < 14; i++) {
                 if (emuKeyState[i]) {
                     keyMask |= 1 << i
                 }
             }
-            shouldDraw = true
-            Module._runFrame(shouldDraw ? 1 : 0, keyMask, touched, touchX, touchY)
+            
+
+            Module._runFrame(1, keyMask, touched, touchX, touchY)
+            if (emuGPUHalfMode) {
+                Module._runFrame(0, keyMask, touched, touchX, touchY)
+            }
+            ctx2d[0].putImageData(FB[0], 0, 0)
+            ctx2d[1].putImageData(FB[1], 0, 0)
             if (audioWorkletNode) {
                 try {
                     var samplesRead = Module._fillAudioBuffer(4096)
@@ -232,10 +256,6 @@
                     // tmpAudioBuffer may be detached if previous message is still processing 
                     console.log(error)
                 }
-            }
-            if (shouldDraw) {
-                ctx2d[0].putImageData(FB[0], 0, 0)
-                ctx2d[1].putImageData(FB[1], 0, 0)
             }
 
             frameCount += 1
@@ -313,8 +333,9 @@
             var ptrAudio = Module._getSymbol(6)
             audioBuffer = new Int16Array(Module.HEAPU8.buffer).subarray(ptrAudio / 2, ptrAudio / 2 + 16384 * 2)
             console.log('Start!!!')
+            emuIsGameLoaded = true
             emuIsRunning = true
-            uiSwitchToPlayer()
+            uiSwitchTo('player')
             callPlugin('loaded', gameID)
         }
 
@@ -398,20 +419,42 @@
             adjustVKLayout()
         }
 
-        function uiSwitchToPlayer() {
-            for (var i = 0; i < 14; i++) {
-                emuKeyState[i] = false
+
+        function uiSwitchTo(mode) {
+            if (mode == uiCurrentMode) {
+                return
             }
-            body.style = 'touch-action: none;'
-            html.style = 'position: fixed;overflow:hidden;touch-action: none;'
             $id('welcome').hidden = true
-            $id('vk-layer').hidden = false
-            uiAdjustSize()
+            $id('vk-layer').hidden = true
+            $id('menu').hidden = true
+            body.style = ''
+            html.style = ''
+
+            if (mode == 'player') {
+                body.style = 'touch-action: none;'
+                html.style = 'position: fixed;overflow:hidden;touch-action: none;'
+                for (var i = 0; i < 14; i++) {
+                    emuKeyState[i] = false
+                }
+
+                $id('vk-layer').hidden = false
+                uiAdjustSize()
+            }
+            if (mode == 'menu') {
+                $id('menu').hidden = false
+            }
+
         }
 
-        function uiSwitchToMenu() {
-
+        function uiSetVkEnabled(e) {
+            uiVkEnabled = e
+            if (e) {
+                $id('vk-layer').hidden = false
+            } else {
+                $id('vk-layer').hidden = true
+            }
         }
+
 
         fileInput.onchange = async () => {
             tryInitSound()
@@ -485,9 +528,17 @@
             }
         }
 
+        var prevRunFrameTime = performance.now()
         function emuLoop() {
             window.requestAnimationFrame(emuLoop)
+
             if (emuIsRunning) {
+                if (emuGPUHalfMode) {
+                    if (performance.now() - prevRunFrameTime < 32) {
+                        return
+                    }
+                }
+                prevRunFrameTime = performance.now()
                 emuRunFrame()
             }
         }
@@ -546,7 +597,7 @@
                     var sx = t.clientX
                     var sy = t.clientY
                     if (sx < stickX - stickDeadZone) {
-                        emuKeyState[1] = true 
+                        emuKeyState[1] = true
                     }
                     if (sx > stickX + stickDeadZone) {
                         emuKeyState[0] = true
@@ -635,7 +686,7 @@
 
             e.preventDefault()
             e.stopPropagation()
-            
+
             var isDown = (e.buttons != 0) && (isPointInRect(e.clientX, e.clientY, r))
             var x = (e.clientX - r.x) / r.width * 256
             var y = (e.clientY - r.y) / r.height * 192
@@ -668,7 +719,64 @@
             }
         }
 
+        var currentConnectedGamepad = -1
+        var gamePadKeyMap = {
+            a: 1,
+            b: 0,
+            x: 3,
+            y: 2,
+            l: 4,
+            r: 5,
+            'select': 9,
+            'start': 16,
+            'up': 12,
+            'down': 13,
+            'left': 14,
+            'right': 15
+        }
 
+        window.addEventListener("gamepadconnected", function (e) {
+            console.log("Gamepad connected at index %d: %s. %d buttons, %d axes.",
+                e.gamepad.index, e.gamepad.id,
+                e.gamepad.buttons.length, e.gamepad.axes.length);
+            showMsg('Gamepad connected.')
+            uiSetVkEnabled(false)
+            currentConnectedGamepad = e.gamepad.index
+
+        });
+
+        function processGamepadInput() {
+            if (currentConnectedGamepad < 0) {
+                return
+            }
+            var gamepad = navigator.getGamepads()[currentConnectedGamepad]
+            if (!gamepad) {
+                showMsg('Gamepad disconnected.')
+                uiSetVkEnabled(true)
+                currentConnectedGamepad = -1
+                return
+            }
+            for (var i = 0; i < emuKeyState.length; i++) {
+                emuKeyState[i] = false
+            }
+            for (var k in gamePadKeyMap) {
+                if (gamepad.buttons[gamePadKeyMap[k]].pressed) {
+                    emuKeyState[keyNameToKeyId[k]] = true
+                }
+            }
+            if (gamepad.axes[0] < -0.5) {
+                emuKeyState[keyNameToKeyId['left']] = true
+            }
+            if (gamepad.axes[0] > 0.5) {
+                emuKeyState[keyNameToKeyId['right']] = true
+            }
+            if (gamepad.axes[1] < -0.5) {
+                emuKeyState[keyNameToKeyId['up']] = true
+            }
+            if (gamepad.axes[1] > 0.5) {
+                emuKeyState[keyNameToKeyId['down']] = true
+            }
+        }
     </script>
 </body>
 

@@ -402,8 +402,8 @@
             vkMap['x'].style = makeVKStyle(offTop, offLeft + abxyWidth / 2 - vkw / 2, vkw, vkh, fontSize)
             vkMap['y'].style = makeVKStyle(offTop + abxyHeight / 2 - vkh / 2, offLeft, vkw, vkh, fontSize)
 
-            vkw = baseSize * 1.5
-            vkh = baseSize * 1.5
+            vkw = baseSize * 1.0
+            vkh = baseSize * 1.0
             offLeft = 0
             $id('vk-stick').style = makeVKStyle(offTop + abxyHeight / 2 - vkh / 2, offLeft + abxyHeight / 2 - vkw / 2, vkw, vkh, fontSize)
             vkStickPos = [offTop + abxyHeight / 2, offLeft + abxyHeight / 2, vkw, vkh, fontSize]
@@ -567,7 +567,7 @@
             var stickH = vkStickPos[3]
 
             var stickPressed = false
-            var stickDeadZone = stickW * 0.05
+            var stickDeadZone = stickW * 0.2
 
             var nextStickTouchID = null
             var nextTpadTouchID = null

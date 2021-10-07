@@ -1,13 +1,13 @@
 class MyAudioWorklet extends AudioWorkletProcessor {
     constructor() {
         super()
-        this.FIFO_CAP = 2048*2
+        this.FIFO_CAP = 5000*2
         this.fifo = new Int16Array(this.FIFO_CAP)
         this.fifoHead = 0
         this.fifoLen = 0
         this.port.onmessage = (e) => {
+            //console.log(this.fifoLen)
             var buf = e.data
-            //console.log(buf)
             for (var i = 0; i < buf.length; i+=2) {
                 if (this.fifoLen + 2 > this.FIFO_CAP) {
                     //console.log("overflow")

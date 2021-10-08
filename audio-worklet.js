@@ -1,34 +1,36 @@
 class MyAudioWorklet extends AudioWorkletProcessor {
     constructor() {
         super()
-        this.FIFO_CAP = 5000*2
-        this.fifo = new Int16Array(this.FIFO_CAP)
+        this.FIFO_CAP = 5000
+        this.fifo0 = new Int16Array(this.FIFO_CAP)
+        this.fifo1 = new Int16Array(this.FIFO_CAP)
         this.fifoHead = 0
         this.fifoLen = 0
         this.port.onmessage = (e) => {
             //console.log(this.fifoLen)
             var buf = e.data
+            var samplesReceived = buf.length / 2
+            if (this.fifoLen + samplesReceived >= this.FIFO_CAP) {
+                console.log('o')
+                return
+            }
+
             for (var i = 0; i < buf.length; i+=2) {
-                if (this.fifoLen + 2 > this.FIFO_CAP) {
-                    //console.log("overflow")
-                    break
-                }
-                this.fifoEnqueue(buf[i])
-                this.fifoEnqueue(buf[i + 1])
+                this.fifoEnqueue(buf[i], buf[i+1])
             }
         }
     }
 
     fifoDequeue() {
-        var ret = this.fifo[this.fifoHead]
         this.fifoHead += 1
         this.fifoHead %= this.FIFO_CAP
         this.fifoLen -= 1
-        return ret
     }
 
-    fifoEnqueue(v) {
-        this.fifo[(this.fifoHead + this.fifoLen) % this.FIFO_CAP] = v
+    fifoEnqueue(a, b) {
+        const pos = (this.fifoHead + this.fifoLen) % this.FIFO_CAP
+        this.fifo0[pos] = a
+        this.fifo1[pos] = b
         this.fifoLen += 1
     }
 
@@ -38,12 +40,13 @@ class MyAudioWorklet extends AudioWorkletProcessor {
         const chan1 = output[1]
 
         for (var i = 0; i < chan0.length; i++) {
-            if (this.fifoLen < 2) {
-                //console.log("underflow")
+            if (this.fifoLen < 1) {
+                console.log("u")
                 break
             }
-            chan0[i] = this.fifoDequeue() / 32768.0
-            chan1[i] = this.fifoDequeue() / 32768.0
+            chan0[i] = this.fifo0[this.fifoHead] / 32768.0
+            chan1[i] = this.fifo1[this.fifoHead] / 32768.0
+            this.fifoDequeue()
         }
         return true
     }

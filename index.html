@@ -7,7 +7,9 @@
     <link href="dark.css" rel="stylesheet">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon.png">
+    <link rel="preload" href="audio-worklet.js" as="script">
     <title>DS Player</title>
 </head>
 
@@ -71,6 +73,14 @@
             background: rgba(0, 127, 255, 0.5);
         }
 
+        #menu button {
+            background: transparent;
+        }
+        #menu button:active {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+
 
         a,
         a:visited {
@@ -105,10 +115,12 @@
         <h1>DS Player</h1>
         <div id="loading">Loading...</div>
         <div id="loadrom" hidden>
-            <input id="rom" type="file">
+            <input id="rom" type="file" hidden>
+            <button style="width:calc(100% - 2em);margin: 1em;" onclick="$id('rom').click()">Open File...</button>
         </div>
+        <hr>
         <a target="_blank" href="https://github.com/44670/desmume-wasm">https://github.com/44670/desmume-wasm</a>
-        <p>Ver. 20211009</p>
+        <p>Ver. 20211016</p>
         <div id="ios-hint" hidden>
             Due to iOS Safari limitations, you may need to add this page to your home screen before you can save the
             game.
@@ -133,10 +145,13 @@
         <p id="msg-text"></p>
     </div>
     <div id="menu" hidden>
-        <button onclick="uiSwitchTo('player')">Back</button>
+        <button onclick="uiSaveConfig();uiSwitchTo('player')">❮ Back</button>
         <hr>
         <input type="checkbox" id="power-save">
-        <label for="power-save">Power Save Mode</label>
+        <label for="power-save">Power Save Mode</label><br>
+        <input type="file" id="restore-file" onchange="uiSaveRestore()" hidden>
+        Save Data: <button onclick="uiSaveBackup()">↓ Backup</button>|<button onclick="$id('restore-file').click()">↑ Restore</button>
+        
         <hr>
     </div>
     <canvas id="top" width="256" height="192"></canvas><br>
@@ -159,10 +174,43 @@
         }
 
         function loadConfig() {
-            var cfg = window.localStorage['config'] || {}
+            var cfg = JSON.parse(window.localStorage['config'] || '{}')
             for (var k in cfg) {
                 config[k] = cfg[k]
             }
+            $id('power-save').checked = config.powerSave
+        }
+        loadConfig()
+
+        function uiSaveConfig() {
+            config.powerSave = !!($id('power-save').checked)
+            window.localStorage['config'] = JSON.stringify(config)
+        }
+
+        function uiSaveBackup() {
+            localforage.getItem('sav-' + gameID).then((data) => {
+                var blob = new Blob([data], { type: "application/binary" });
+                var link = document.createElement("a");
+                link.href = window.URL.createObjectURL(blob);
+                link.download = 'sav-' + gameID + '.sav';
+                link.click();
+            })
+        }
+
+        async function uiSaveRestore() {
+            var file = $id('restore-file').files[0]
+            if (!file) {
+                return
+            }
+            if (file.size > 1 * 1024 * 1024) {
+                alert('Too large! It should not be a save file.')
+                return
+            }
+            var u8 = new Uint8Array(await file.arrayBuffer())
+            localforage.setItem('sav-' + gameID, u8).then(() => {
+                alert('Save file loaded.')
+                location.reload()
+            })
         }
 
 
@@ -263,7 +311,7 @@
                 console.log('mic')
                 keyMask |= 1 << 14
             }
-            
+
 
             if (config.powerSave) {
                 Module._runFrame(0, keyMask, touched, touchX, touchY)
@@ -290,7 +338,7 @@
                 prevCalcFPSTime = time
                 divFPS.innerText = 'fps:' + ('' + fps).substring(0, 5)
             }
-            if (frameCount % 120 == 0) {
+            if (frameCount % 60 == 0) {
                 checkSaveGame()
             }
         }
@@ -454,6 +502,7 @@
             $id('menu').hidden = true
             body.style = ''
             html.style = ''
+            emuIsRunning = false
 
             if (mode == 'player') {
                 body.style = 'touch-action: none;'
@@ -464,8 +513,12 @@
 
                 $id('vk-layer').hidden = false
                 uiUpdateLayout()
+                if (emuIsGameLoaded) {
+                    emuIsRunning = true
+                }
             }
             if (mode == 'menu') {
+
                 $id('menu').hidden = false
             }
 
@@ -584,7 +637,7 @@
             var stickH = vkStickPos[3]
 
             var stickPressed = false
-            var stickDeadZone = stickW * 0.2
+            var stickDeadZone = stickW * 0.4
 
             var nextStickTouchID = null
             var nextTpadTouchID = null
@@ -656,6 +709,9 @@
                     vkState[k][0] = vkState[k][1]
                     if (vkState[k][1]) {
                         dom.classList.add('vk-touched')
+                        if (k == 'menu') {
+                            uiSwitchTo('menu')
+                        }
                     } else {
                         dom.classList.remove('vk-touched')
                         if (k == "stick") {
@@ -731,6 +787,9 @@
             var k = convertKeyCode(e.keyCode)
             if (k >= 0) {
                 emuKeyState[k] = isDown
+            }
+            if (e.keyCode == 27) {
+                uiSwitchTo('menu')
             }
         }
 

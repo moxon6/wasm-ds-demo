@@ -2,14 +2,14 @@
 <html>
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link href="dark.css" rel="stylesheet">
+    <meta charset="utf-8" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="preload" href="audio-worklet.js" as="script">
+    <link href="dark.css" rel="stylesheet">
     <title>DS Player</title>
 </head>
 
@@ -116,11 +116,12 @@
         <div id="loading">Loading...</div>
         <div id="loadrom" hidden>
             <input id="rom" type="file" hidden>
-            <button style="width:calc(100% - 2em);margin: 1em;" onclick="$id('rom').click()">Open File...</button>
+            <button style="width:calc(100% - 2em);margin: 1em;" onclick="$id('rom').click()">Choose File...</button>
         </div>
         <hr>
         <a target="_blank" href="https://github.com/44670/desmume-wasm">https://github.com/44670/desmume-wasm</a>
-        <p>Ver. 20211016</p>
+        <p>Ver. 20211122 <a href="#" onclick="whatsNew()">What's new?</a></p>
+        <p><a href="#" onclick="uiSwitchTo('menu')">⚙ Settings...</a></p>
         <div id="ios-hint" hidden>
             Due to iOS Safari limitations, you may need to add this page to your home screen before you can save the
             game.
@@ -145,32 +146,36 @@
         <p id="msg-text"></p>
     </div>
     <div id="menu" hidden>
-        <button onclick="uiSaveConfig();uiSwitchTo('player')">❮ Back</button>
+        <button onclick="uiMenuBack()">❮ Back</button>
         <hr>
         <input type="checkbox" id="power-save">
-        <label for="power-save">Power Save Mode</label><br>
-        <input type="file" id="restore-file" onchange="uiSaveRestore()" hidden>
-        Save Data: <button onclick="uiSaveBackup()">↓ Backup</button>|<button onclick="$id('restore-file').click()">↑ Restore</button>
-        
+        <label for="power-save">Power-save mode</label><br>
+        <input type="checkbox" id="vk-enabled">
+        <label for="vk-enabled">Virtual keyboard</label><br>
         <hr>
+        <div id="menu-savegame" hidden>
+            <input type="file" id="restore-file" onchange="uiSaveRestore()" hidden>
+            Save Data: <button onclick="uiSaveBackup()">↓ Export</button>|<button onclick="$id('restore-file').click()">↑ Import</button>
+            <hr>
+        </div>
     </div>
-    <canvas id="top" width="256" height="192"></canvas><br>
-    <canvas id="bottom" width="256" height="192"></canvas><br>
+    <div id="player" hidden>
+        <canvas id="top" width="256" height="192"></canvas>
+        <canvas id="bottom" width="256" height="192"></canvas>
+    </div>
     <script src="localforage.js"></script>
-    <script src="build/nds.js"></script>
     <script>
 
         var uiCurrentMode = 'welcome'
-        var uiVkEnabled = true
         var plugins = {}
         var body = document.getElementsByTagName("body")[0]
         var html = document.getElementsByTagName("html")[0]
         var config = {
             swapTopBottom: false,
             swapTopBottomL: false,
-            showVK: false,
             powerSave: true,
             micWhenR: true,
+            vkEnabled: true,
         }
 
         function loadConfig() {
@@ -179,12 +184,24 @@
                 config[k] = cfg[k]
             }
             $id('power-save').checked = config.powerSave
+            $id('vk-enabled').checked = config.vkEnabled
         }
         loadConfig()
 
         function uiSaveConfig() {
             config.powerSave = !!($id('power-save').checked)
+            config.vkEnabled = !!($id('vk-enabled').checked)
             window.localStorage['config'] = JSON.stringify(config)
+        }
+
+        
+        function uiMenuBack() {
+            uiSaveConfig()
+            if (emuIsGameLoaded) {
+                uiSwitchTo('player')
+            } else {
+                uiSwitchTo('welcome')
+            }
         }
 
         function uiSaveBackup() {
@@ -192,7 +209,7 @@
                 var blob = new Blob([data], { type: "application/binary" });
                 var link = document.createElement("a");
                 link.href = window.URL.createObjectURL(blob);
-                link.download = 'sav-' + gameID + '.sav';
+                link.download = 'sav-' + gameID + '.dsv';
                 link.click();
             })
         }
@@ -202,7 +219,7 @@
             if (!file) {
                 return
             }
-            if (file.size > 1 * 1024 * 1024) {
+            if (file.size > 2.2 * 1024 * 1024) {
                 alert('Too large! It should not be a save file.')
                 return
             }
@@ -497,9 +514,11 @@
             if (mode == uiCurrentMode) {
                 return
             }
+            uiCurrentMode = mode
             $id('welcome').hidden = true
             $id('vk-layer').hidden = true
             $id('menu').hidden = true
+            $id('player').hidden = true
             body.style = ''
             html.style = ''
             emuIsRunning = false
@@ -510,28 +529,27 @@
                 for (var i = 0; i < 14; i++) {
                     emuKeyState[i] = false
                 }
-
-                $id('vk-layer').hidden = false
+                if (config.vkEnabled) {
+                    $id('vk-layer').hidden = false
+                }
                 uiUpdateLayout()
                 if (emuIsGameLoaded) {
                     emuIsRunning = true
                 }
+                $id('player').hidden = false
             }
             if (mode == 'menu') {
-
+                $id('player').hidden = false
                 $id('menu').hidden = false
+                $id('menu-savegame').hidden = emuIsGameLoaded ? false : true
+            }
+            if (mode == 'welcome') {
+                $id('welcome').hidden = false
             }
 
         }
 
-        function uiSetVkEnabled(e) {
-            uiVkEnabled = e
-            if (e) {
-                $id('vk-layer').hidden = false
-            } else {
-                $id('vk-layer').hidden = true
-            }
-        }
+
 
 
         fileInput.onchange = async () => {
@@ -567,7 +585,7 @@
                 if (!audioContext.audioWorklet) {
                     alert('AudioWorklet is not supported in your browser...')
                 } else {
-                    audioContext.audioWorklet.addModule("/audio-worklet.js").then(() => {
+                    audioContext.audioWorklet.addModule("audio-worklet.js").then(() => {
                         audioWorkletNode = new AudioWorkletNode(audioContext, "my-worklet", { outputChannelCount: [2] })
                         audioWorkletNode.connect(audioContext.destination)
                     })
@@ -814,7 +832,6 @@
                 e.gamepad.index, e.gamepad.id,
                 e.gamepad.buttons.length, e.gamepad.axes.length);
             showMsg('Gamepad connected.')
-            uiSetVkEnabled(false)
             currentConnectedGamepad = e.gamepad.index
 
         });
@@ -826,7 +843,6 @@
             var gamepad = navigator.getGamepads()[currentConnectedGamepad]
             if (!gamepad) {
                 showMsg('Gamepad disconnected.')
-                uiSetVkEnabled(true)
                 currentConnectedGamepad = -1
                 return
             }
@@ -851,7 +867,15 @@
                 emuKeyState[keyNameToKeyId['down']] = true
             }
         }
+
+        function whatsNew() {
+            alert(`
+1. Added setting option to hide the virtual keyboard.
+`)
+        }
     </script>
+    <script src="build/nds.js"></script>
+    <script src="sw-loader.js"></script>
 </body>
 
 </html>

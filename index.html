@@ -80,8 +80,6 @@
             background: rgba(255, 255, 255, 0.5);
         }
 
-
-
         a,
         a:visited {
             color: white;
@@ -220,12 +218,17 @@
                 return
             }
             if (file.size > 2.2 * 1024 * 1024) {
-                alert('Too large! It should not be a save file.')
+                alert('Too large!');
+                return
+            }
+            // Only .dsv files are supported
+            if (!file.name.endsWith('.dsv')) {
+                alert('Only .dsv files are supported.')
                 return
             }
             var u8 = new Uint8Array(await file.arrayBuffer())
             localforage.setItem('sav-' + gameID, u8).then(() => {
-                alert('Save file loaded.')
+                alert('Save file loaded. The game will be restarted.')
                 location.reload()
             })
         }

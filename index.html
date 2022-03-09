@@ -5,7 +5,8 @@
     <meta charset="utf-8" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height">
+    <meta name="viewport"
+        content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="preload" href="audio-worklet.js" as="script">
@@ -60,6 +61,7 @@
             height: 100%;
             z-index: 2;
             touch-action: none;
+            display: none;
         }
 
         #menu {
@@ -76,6 +78,7 @@
         #menu button {
             background: transparent;
         }
+
         #menu button:active {
             background: rgba(255, 255, 255, 0.5);
         }
@@ -153,7 +156,8 @@
         <hr>
         <div id="menu-savegame" hidden>
             <input type="file" id="restore-file" onchange="uiSaveRestore()" hidden>
-            Save Data: <button onclick="uiSaveBackup()">↓ Export</button>|<button onclick="$id('restore-file').click()">↑ Import</button>
+            Save Data: <button onclick="uiSaveBackup()">↓ Export</button>|<button
+                onclick="$id('restore-file').click()">↑ Import</button>
             <hr>
         </div>
     </div>
@@ -192,7 +196,7 @@
             window.localStorage['config'] = JSON.stringify(config)
         }
 
-        
+
         function uiMenuBack() {
             uiSaveConfig()
             if (emuIsGameLoaded) {
@@ -386,6 +390,7 @@
         }
 
         async function tryLoadROM(file) {
+
             if (!file) {
                 return
             }
@@ -555,22 +560,16 @@
 
 
 
-        fileInput.onchange = async () => {
+        const start = async () => {
             tryInitSound()
-            var file = fileInput.files[0]
-            if (!file) {
-                return
-            }
-            if (file.name.endsWith('.json')) {
-                var obj = JSON.parse(await file.text())
-                var pluginName = obj.name || 'unknown'
-                plugins[pluginName] = obj
-                if (obj.js) {
-                    plugins[pluginName].handler = eval(obj.js)(obj)
-                }
-                alert('plugin loaded!')
-                return
-            }
+
+            const response = await fetch('snake_assemblyscript.nds')
+            const ab = await response.arrayBuffer();
+
+            file = new File([ab], "snake_assemblyscript.nds", {
+                type: "text/plain",
+            });
+
             await tryLoadROM(file)
         }
 
@@ -870,6 +869,8 @@
                 emuKeyState[keyNameToKeyId['down']] = true
             }
         }
+
+        start();
 
         function whatsNew() {
             alert(`
